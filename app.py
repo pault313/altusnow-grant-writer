@@ -338,7 +338,10 @@ def render_sidebar(api_key_from_env: str):
         api_key = api_key_from_env
         if not api_key:
             # Check Streamlit secrets
-            api_key = st.secrets.get("ANTHROPIC_API_KEY", "")
+            try:
+                api_key = st.secrets.get("ANTHROPIC_API_KEY", "")
+            except Exception:
+                api_key = ""
         if not api_key:
             api_key = st.text_input(
                 "Anthropic API Key",
