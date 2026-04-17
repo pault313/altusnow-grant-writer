@@ -22,6 +22,7 @@ class NeedsStatementStep(BaseStep):
                 step_outputs.get("compliance_extraction", ""),
                 "needs",
             ),
+            intake_answers=context.get("intake_answers_text", "No intake answers provided."),
         )
 
 

@@ -74,5 +74,13 @@ user_prompt_template: |
 
   ---
 
+  ## Applicant-Provided Context
+
+  The applicant provided the following information during intake:
+
+  {intake_answers}
+
+  ---
+
   Write the needs/problem statement section now. Make it compelling but data-driven.
   If the RFP specifies a page limit for this section, target approximately that length.

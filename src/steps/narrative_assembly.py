@@ -20,4 +20,5 @@ class NarrativeAssemblyStep(BaseStep):
             needs_statement=step_outputs.get("needs_statement", ""),
             program_design=step_outputs.get("program_design", ""),
             org_context=step_outputs.get("org_context_assembly", ""),
+            intake_answers=context.get("intake_answers_text", "No intake answers provided."),
         )

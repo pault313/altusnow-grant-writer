@@ -22,6 +22,7 @@ from rich.panel import Panel
 from src.llm_client import CostTracker, LLMClient
 from src.steps.rfp_ingestion import RFPIngestionStep
 from src.steps.compliance_extraction import ComplianceExtractionStep
+from src.steps.intake_questionnaire import IntakeQuestionnaireStep
 from src.steps.org_context_assembly import OrgContextAssemblyStep
 from src.steps.vpi_integration import VPIIntegrationStep
 from src.steps.needs_statement import NeedsStatementStep
@@ -45,6 +46,15 @@ STEP_REGISTRY = [
 ]
 
 STEP_NAMES = [name for name, _ in STEP_REGISTRY]
+
+# Analysis steps run before user answers intake questions
+ANALYZE_STEPS = ["rfp_ingestion", "compliance_extraction"]
+
+# Generation steps run after user answers intake questions
+GENERATE_STEPS = [
+    "org_context_assembly", "vpi_integration", "needs_statement",
+    "program_design", "narrative_assembly", "quality_review",
+]
 
 
 class GrantPipeline:
@@ -86,6 +96,12 @@ class GrantPipeline:
                 llm_client=self.llm,
                 config_dir=config_dir,
             )
+
+        # Intake questionnaire step (not in main registry -- runs between analyze and generate)
+        self.intake_step = IntakeQuestionnaireStep(
+            llm_client=self.llm,
+            config_dir=config_dir,
+        )
 
     def run(
         self,
@@ -285,6 +301,260 @@ class GrantPipeline:
             f"Total cost: ${cost_summary['total_cost_usd']:.4f}\n"
             f"Total tokens: {cost_summary['total_input_tokens']:,} in + "
             f"{cost_summary['total_output_tokens']:,} out\n"
+            f"Report: {report_path}\n"
+            f"Language scan: {language_scan.summary()}",
+            title="Results",
+        ))
+
+        return {
+            "final_report": final_report,
+            "report_path": str(report_path),
+            "scorecard": scorecard,
+            "step_outputs": context["step_outputs"],
+            "cost_summary": cost_summary,
+            "language_scan": {
+                "passed": language_scan.passed,
+                "summary": language_scan.summary(),
+                "violations": [
+                    {"term": v.term, "category": v.category, "line": v.line_number}
+                    for v in language_scan.violations
+                ],
+            },
+            "run_dir": str(run_dir),
+        }
+
+    def analyze(
+        self,
+        rfp_text: str,
+        org_profile: dict,
+        file_name: str = "rfp_document",
+        page_count: int = 0,
+        word_count: int = 0,
+        tables_markdown: str = "",
+        vpi_data: Optional[dict] = None,
+        target_state: str = "",
+        on_step_complete: Optional[Any] = None,
+    ) -> dict[str, Any]:
+        """
+        Run analysis phase: parse RFP, extract compliance, generate intake questions.
+
+        Returns dict with step_outputs, questions (parsed list), cost_summary, and
+        the context dict needed to resume with generate().
+        """
+        delay = self.settings.get("rate_limit_delay_seconds", 3)
+
+        context: dict[str, Any] = {
+            "rfp_text": rfp_text,
+            "file_name": file_name,
+            "page_count": page_count,
+            "word_count": word_count,
+            "tables_markdown": tables_markdown,
+            "org_profile": org_profile,
+            "vpi_data": vpi_data or {},
+            "target_state": target_state,
+            "step_outputs": {},
+            "previous_step_output": "",
+        }
+
+        console.print(Panel(
+            f"[bold]Analyzing RFP[/bold]\n"
+            f"RFP: {file_name}\n"
+            f"Organization: {org_profile.get('name', 'Unknown')}",
+            title="Analysis Phase",
+        ))
+
+        # Run analysis steps (RFP ingestion + compliance extraction)
+        for step_name in ANALYZE_STEPS:
+            step = self.steps[step_name]
+            overrides = self.settings.get("step_overrides", {}).get(step_name, {})
+
+            console.print(f"\n[bold cyan]{step_name}[/bold cyan]")
+            start_time = time.time()
+            output = step.run(
+                context=context,
+                model_override=overrides.get("model"),
+                temperature_override=overrides.get("temperature"),
+                max_tokens_override=overrides.get("max_tokens"),
+            )
+            elapsed = time.time() - start_time
+
+            context["step_outputs"][step_name] = output
+            context["previous_step_output"] = output
+            console.print(f"  [dim]{step_name} completed in {elapsed:.1f}s[/dim]")
+
+            if on_step_complete:
+                on_step_complete(step_name, output)
+
+            if delay > 0:
+                time.sleep(delay)
+
+        # Generate intake questions
+        console.print(f"\n[bold cyan]intake_questionnaire[/bold cyan]")
+        start_time = time.time()
+        raw_questions = self.intake_step.run(context=context)
+        elapsed = time.time() - start_time
+        questions = self.intake_step.parse_questions(raw_questions)
+        console.print(f"  [dim]Generated {len(questions)} intake questions in {elapsed:.1f}s[/dim]")
+
+        context["step_outputs"]["intake_questionnaire"] = raw_questions
+
+        if on_step_complete:
+            on_step_complete("intake_questionnaire", raw_questions)
+
+        return {
+            "step_outputs": context["step_outputs"],
+            "questions": questions,
+            "context": context,
+            "cost_summary": self.cost_tracker.summary(),
+        }
+
+    def generate(
+        self,
+        context: dict[str, Any],
+        intake_answers: dict[str, str],
+        save_intermediate: bool = True,
+        on_step_complete: Optional[Any] = None,
+    ) -> dict[str, Any]:
+        """
+        Run generation phase with user-provided intake answers.
+
+        Args:
+            context: The context dict returned by analyze().
+            intake_answers: Dict of question_id -> user answer.
+            save_intermediate: Save each step's output to disk.
+            on_step_complete: Callback(step_name, output).
+
+        Returns:
+            Same result dict as run().
+        """
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        run_dir = self.output_dir / f"run_{timestamp}"
+        run_dir.mkdir(parents=True, exist_ok=True)
+
+        # Inject intake answers into context
+        context["intake_answers"] = intake_answers
+
+        # Build a formatted summary of answers for downstream prompts
+        answer_lines = []
+        for qid, answer in intake_answers.items():
+            if answer and answer.strip():
+                # Clean up the question ID to a readable label
+                label = qid.replace("_", " ").title()
+                answer_lines.append(f"- **{label}**: {answer}")
+        context["intake_answers_text"] = "\n".join(answer_lines) if answer_lines else "No additional context provided."
+
+        skip_vpi = not context.get("vpi_data") and not context.get("target_state")
+        max_cost = self.settings.get("max_total_cost_usd", 10.00)
+        delay = self.settings.get("rate_limit_delay_seconds", 3)
+
+        console.print(Panel(
+            f"[bold]Generating Grant Application[/bold]\n"
+            f"Intake answers: {len([a for a in intake_answers.values() if a.strip()])}\n"
+            f"Budget: ${max_cost:.2f}",
+            title="Generation Phase",
+        ))
+
+        # Save analysis steps if requested
+        if save_intermediate:
+            for i, step_name in enumerate(ANALYZE_STEPS):
+                if step_name in context["step_outputs"]:
+                    out_path = run_dir / f"{i+1:02d}_{step_name}.md"
+                    with open(out_path, "w") as f:
+                        f.write(context["step_outputs"][step_name])
+
+        # Run generation steps
+        for step_name in GENERATE_STEPS:
+            if step_name == "vpi_integration" and skip_vpi:
+                console.print(f"\n[dim]Skipping {step_name} (no VPI data)[/dim]")
+                context["step_outputs"][step_name] = "VPI data not provided."
+                continue
+
+            step = self.steps[step_name]
+
+            if self.cost_tracker.total_cost >= max_cost:
+                console.print(f"\n[red]Budget exceeded (${self.cost_tracker.total_cost:.2f})[/red]")
+                break
+
+            step_idx = STEP_NAMES.index(step_name)
+            console.print(f"\n[bold cyan]Step {step_idx+1}/{len(STEP_NAMES)}: {step_name}[/bold cyan]")
+
+            overrides = self.settings.get("step_overrides", {}).get(step_name, {})
+
+            start_time = time.time()
+            output = step.run(
+                context=context,
+                model_override=overrides.get("model"),
+                temperature_override=overrides.get("temperature"),
+                max_tokens_override=overrides.get("max_tokens"),
+            )
+            elapsed = time.time() - start_time
+
+            context["step_outputs"][step_name] = output
+            context["previous_step_output"] = output
+            console.print(f"  [dim]{step_name} completed in {elapsed:.1f}s[/dim]")
+
+            if on_step_complete:
+                on_step_complete(step_name, output)
+
+            if save_intermediate:
+                out_path = run_dir / f"{step_idx+1:02d}_{step_name}.md"
+                with open(out_path, "w") as f:
+                    f.write(output)
+
+            if delay > 0:
+                time.sleep(delay)
+
+        # --- Post-processing (same as run()) ---
+        qa_output = context["step_outputs"].get("quality_review", "")
+        narrative_output = context["step_outputs"].get(
+            "narrative_assembly",
+            context.get("previous_step_output", ""),
+        )
+
+        scorecard = ""
+        final_report = qa_output or narrative_output
+
+        if qa_output and "===REVISED_DRAFT_START===" in qa_output:
+            parts = qa_output.split("===REVISED_DRAFT_START===", 1)
+            scorecard = parts[0].strip()
+            final_report = parts[1].strip()
+        elif qa_output:
+            for marker in ["## Revised Draft", "# Revised Draft", "---\n# "]:
+                if marker in qa_output:
+                    idx = qa_output.index(marker)
+                    scorecard = qa_output[:idx].strip()
+                    final_report = qa_output[idx:].strip()
+                    break
+
+        language_scan = scan_text(final_report)
+        if not language_scan.passed:
+            console.print(f"\n[yellow]Language scan: {language_scan.summary()}[/yellow]")
+            final_report, fix_count = auto_fix_prohibited(final_report)
+            if fix_count > 0:
+                console.print(f"  [green]Auto-fixed {fix_count} prohibited term(s)[/green]")
+
+        report_path = run_dir / f"Grant_Application_{timestamp}.md"
+        with open(report_path, "w") as f:
+            f.write(final_report)
+
+        if scorecard:
+            scorecard_path = run_dir / f"QA_Scorecard_{timestamp}.md"
+            with open(scorecard_path, "w") as f:
+                f.write(scorecard)
+
+        cost_summary = self.cost_tracker.summary()
+        cost_path = run_dir / "cost_summary.json"
+        with open(cost_path, "w") as f:
+            json.dump(cost_summary, f, indent=2)
+
+        # Save intake answers
+        answers_path = run_dir / "intake_answers.json"
+        with open(answers_path, "w") as f:
+            json.dump(intake_answers, f, indent=2)
+
+        console.print(Panel(
+            f"[bold green]Pipeline Complete[/bold green]\n"
+            f"Total cost: ${cost_summary['total_cost_usd']:.4f}\n"
             f"Report: {report_path}\n"
             f"Language scan: {language_scan.summary()}",
             title="Results",

@@ -73,6 +73,16 @@ user_prompt_template: |
 
   ---
 
+  ## Applicant-Provided Context
+
+  The applicant provided the following details during intake. Use these for
+  specific names, numbers, partners, and program details. Do not use placeholders
+  like [TBD] or [Alliance to confirm] when the answer was provided below.
+
+  {intake_answers}
+
+  ---
+
   Assemble these sections into a complete, cohesive grant application narrative.
   Add an abstract, table of contents, transitions, and cross-references.
   Ensure internal consistency throughout. Output the complete document in markdown.

@@ -2,8 +2,8 @@
 Grant Writer -- Streamlit UI
 
 AI-powered grant writing tool for Altus Solutions.
-Upload an RFP, provide VPI data, and generate a complete grant application draft
-with compliance checking and trauma-informed language guardrails.
+Upload an RFP, answer intake questions, and generate a complete grant application
+draft with compliance checking and trauma-informed language guardrails.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ import streamlit as st
 from dotenv import load_dotenv
 
 from src.database import init_db, seed_altus_org, get_org, list_orgs, get_guardrails
-from src.pipeline import GrantPipeline, STEP_NAMES
+from src.pipeline import GrantPipeline, STEP_NAMES, ANALYZE_STEPS, GENERATE_STEPS
 from src.utils.pdf_parser import extract_document, format_tables_as_markdown
 from src.utils.language_guard import scan_text
 from src.utils.compliance_checker import parse_compliance_checklist, check_draft_compliance
@@ -55,30 +55,20 @@ BRAND_CSS = """
     --danger: #D94F4F;
 }
 
-/* Global font */
 html, body, [class*="css"] {
     font-family: 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
-/* Header bar */
 header[data-testid="stHeader"] {
     background: #FFFFFF;
     border-bottom: 2px solid var(--teal);
 }
 
-/* Sidebar */
 section[data-testid="stSidebar"] {
     background: #FFFFFF;
     border-right: 1px solid var(--light-gray);
 }
 
-section[data-testid="stSidebar"] .stMarkdown h1 {
-    color: var(--slate);
-    font-weight: 700;
-    letter-spacing: -0.01em;
-}
-
-/* Primary buttons */
 .stButton > button[kind="primary"],
 button[data-testid="stBaseButton-primary"] {
     background: var(--teal) !important;
@@ -87,7 +77,6 @@ button[data-testid="stBaseButton-primary"] {
     font-weight: 600 !important;
     border-radius: 8px !important;
     padding: 0.6rem 1.5rem !important;
-    transition: background 0.2s ease !important;
 }
 
 .stButton > button[kind="primary"]:hover,
@@ -95,23 +84,14 @@ button[data-testid="stBaseButton-primary"]:hover {
     background: var(--teal-dark) !important;
 }
 
-/* Secondary buttons */
 .stButton > button:not([kind="primary"]),
 button[data-testid="stBaseButton-secondary"] {
     border: 1px solid var(--light-gray) !important;
     color: var(--slate) !important;
     border-radius: 8px !important;
     font-weight: 500 !important;
-    transition: all 0.2s ease !important;
 }
 
-.stButton > button:not([kind="primary"]):hover,
-button[data-testid="stBaseButton-secondary"]:hover {
-    border-color: var(--teal) !important;
-    color: var(--teal) !important;
-}
-
-/* Download buttons */
 .stDownloadButton > button {
     background: var(--teal) !important;
     border: none !important;
@@ -120,22 +100,10 @@ button[data-testid="stBaseButton-secondary"]:hover {
     border-radius: 8px !important;
 }
 
-.stDownloadButton > button:hover {
-    background: var(--teal-dark) !important;
-}
-
-/* Tabs */
-.stTabs [data-baseweb="tab-list"] {
-    gap: 8px;
-    border-bottom: 2px solid var(--light-gray);
-}
-
 .stTabs [data-baseweb="tab"] {
     font-family: 'Open Sans', sans-serif;
     font-weight: 600;
     color: var(--slate-light);
-    padding: 12px 20px;
-    border-radius: 8px 8px 0 0;
 }
 
 .stTabs [aria-selected="true"] {
@@ -143,7 +111,6 @@ button[data-testid="stBaseButton-secondary"]:hover {
     border-bottom: 3px solid var(--teal) !important;
 }
 
-/* Metrics */
 [data-testid="stMetric"] {
     background: #FFFFFF;
     border: 1px solid var(--light-gray);
@@ -156,7 +123,6 @@ button[data-testid="stBaseButton-secondary"]:hover {
     font-weight: 600 !important;
     text-transform: uppercase !important;
     font-size: 0.75rem !important;
-    letter-spacing: 0.03em !important;
 }
 
 [data-testid="stMetricValue"] {
@@ -164,62 +130,12 @@ button[data-testid="stBaseButton-secondary"]:hover {
     font-weight: 700 !important;
 }
 
-/* Expanders */
-.streamlit-expanderHeader {
-    font-weight: 600;
-    color: var(--slate);
-    border-radius: 8px;
-}
-
-/* Progress bar */
 .stProgress > div > div {
     background: var(--teal) !important;
 }
 
-/* Success/warning/error alerts */
-.stAlert [data-testid="stAlertContentSuccess"] {
-    border-left-color: var(--success) !important;
-}
-.stAlert [data-testid="stAlertContentWarning"] {
-    border-left-color: var(--warning) !important;
-}
-.stAlert [data-testid="stAlertContentError"] {
-    border-left-color: var(--danger) !important;
-}
-
-/* File uploader */
-[data-testid="stFileUploader"] {
-    border-radius: 8px;
-}
-
-/* Slider */
-.stSlider [data-testid="stThumbValue"] {
-    color: var(--teal) !important;
-}
-
-/* Dividers */
-hr {
-    border-color: var(--light-gray) !important;
-}
-
-/* Links */
-a {
-    color: var(--teal) !important;
-}
-a:hover {
-    color: var(--teal-dark) !important;
-}
-
-/* Branded step indicators */
-.step-active {
-    background: var(--teal-light);
-    border-left: 3px solid var(--teal);
-    padding: 8px 12px;
-    border-radius: 0 6px 6px 0;
-    margin-bottom: 4px;
-    font-weight: 600;
-    color: var(--teal-dark);
-}
+hr { border-color: var(--light-gray) !important; }
+a { color: var(--teal) !important; }
 
 .step-complete {
     background: #f0fdf4;
@@ -228,6 +144,16 @@ a:hover {
     border-radius: 0 6px 6px 0;
     margin-bottom: 4px;
     color: var(--success);
+}
+
+.step-active {
+    background: var(--teal-light);
+    border-left: 3px solid var(--teal);
+    padding: 8px 12px;
+    border-radius: 0 6px 6px 0;
+    margin-bottom: 4px;
+    font-weight: 600;
+    color: var(--teal-dark);
 }
 
 .step-pending {
@@ -239,7 +165,6 @@ a:hover {
     color: var(--slate-light);
 }
 
-/* Cost badge */
 .cost-badge {
     background: var(--teal-light);
     color: var(--teal-dark);
@@ -250,7 +175,6 @@ a:hover {
     display: inline-block;
 }
 
-/* Guardrail badge */
 .guardrail-pass {
     background: #f0fdf4;
     color: var(--success);
@@ -270,6 +194,32 @@ a:hover {
     font-weight: 600;
     display: inline-block;
 }
+
+.question-card {
+    background: #FFFFFF;
+    border: 1px solid var(--light-gray);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 12px;
+}
+
+.question-critical {
+    border-left: 3px solid var(--danger);
+}
+
+.question-recommended {
+    border-left: 3px solid var(--gold);
+}
+
+.category-header {
+    color: var(--teal);
+    font-weight: 700;
+    font-size: 1.1rem;
+    margin-top: 24px;
+    margin-bottom: 8px;
+    padding-bottom: 4px;
+    border-bottom: 2px solid var(--teal-light);
+}
 </style>
 """
 
@@ -283,23 +233,13 @@ VPI_DIR = DATA_DIR / "vpi"
 STEP_LABELS = {
     "rfp_ingestion": "RFP Analysis",
     "compliance_extraction": "Compliance Checklist",
+    "intake_questionnaire": "Intake Questions",
     "org_context_assembly": "Org Context",
     "vpi_integration": "VPI Data Integration",
     "needs_statement": "Needs Statement",
     "program_design": "Program Design & Budget",
     "narrative_assembly": "Narrative Assembly",
     "quality_review": "Quality Review",
-}
-
-STEP_ICONS = {
-    "rfp_ingestion": "1",
-    "compliance_extraction": "2",
-    "org_context_assembly": "3",
-    "vpi_integration": "4",
-    "needs_statement": "5",
-    "program_design": "6",
-    "narrative_assembly": "7",
-    "quality_review": "8",
 }
 
 
@@ -309,21 +249,34 @@ def initialize():
     seed_altus_org()
 
     defaults = {
+        "pipeline": None,
+        "analysis_result": None,
         "pipeline_result": None,
         "extracted_doc": None,
-        "current_step": None,
+        "intake_answers": {},
         "edited_sections": {},
         "completed_steps": [],
+        "current_step": None,
     }
     for key, val in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = val
 
 
-def render_sidebar(api_key_from_env: str):
+def get_api_key() -> str:
+    """Get API key from environment, secrets, or user input."""
+    key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not key:
+        try:
+            key = st.secrets.get("ANTHROPIC_API_KEY", "")
+        except Exception:
+            key = ""
+    return key
+
+
+def render_sidebar():
     """Render the branded sidebar."""
     with st.sidebar:
-        # Brand header
         st.markdown(
             '<h1 style="margin-bottom: 0; font-size: 1.5rem;">AltusNow</h1>'
             '<p style="color: #19948A; font-weight: 600; font-size: 0.95rem; margin-top: -4px;">'
@@ -335,18 +288,12 @@ def render_sidebar(api_key_from_env: str):
         st.divider()
 
         # API key
-        api_key = api_key_from_env
-        if not api_key:
-            # Check Streamlit secrets
-            try:
-                api_key = st.secrets.get("ANTHROPIC_API_KEY", "")
-            except Exception:
-                api_key = ""
+        api_key = get_api_key()
         if not api_key:
             api_key = st.text_input(
                 "Anthropic API Key",
                 type="password",
-                help="Required for AI generation. Set in Streamlit secrets or enter here.",
+                help="Required for AI generation.",
             )
 
         st.divider()
@@ -367,46 +314,21 @@ def render_sidebar(api_key_from_env: str):
 
         st.divider()
 
-        # Pipeline progress (sidebar step tracker)
-        if st.session_state.completed_steps:
-            st.markdown(
-                '<p style="font-weight: 600; font-size: 0.8rem; color: #7A8289; '
-                'text-transform: uppercase; letter-spacing: 0.05em;">Pipeline Progress</p>',
-                unsafe_allow_html=True,
-            )
-            for step_name in STEP_NAMES:
-                label = STEP_LABELS.get(step_name, step_name)
-                num = STEP_ICONS.get(step_name, "")
-                if step_name in st.session_state.completed_steps:
-                    st.markdown(
-                        f'<div class="step-complete">{num}. {label}</div>',
-                        unsafe_allow_html=True,
-                    )
-                elif step_name == st.session_state.current_step:
-                    st.markdown(
-                        f'<div class="step-active">{num}. {label}</div>',
-                        unsafe_allow_html=True,
-                    )
-                else:
-                    st.markdown(
-                        f'<div class="step-pending">{num}. {label}</div>',
-                        unsafe_allow_html=True,
-                    )
-
-            st.divider()
-
         # Cost tracking
+        total_cost = 0
+        if st.session_state.analysis_result:
+            total_cost += st.session_state.analysis_result.get("cost_summary", {}).get("total_cost_usd", 0)
         if st.session_state.pipeline_result:
-            cost = st.session_state.pipeline_result.get("cost_summary", {})
-            total_cost = cost.get("total_cost_usd", 0)
-            total_tokens = cost.get("total_input_tokens", 0) + cost.get("total_output_tokens", 0)
+            total_cost = st.session_state.pipeline_result.get("cost_summary", {}).get("total_cost_usd", 0)
+
+        if total_cost > 0:
             st.markdown(
                 f'<div class="cost-badge">${total_cost:.2f} total cost</div>',
                 unsafe_allow_html=True,
             )
-            st.caption(f"{total_tokens:,} tokens used")
 
-            # Language scan badge
+        # Language scan badge
+        if st.session_state.pipeline_result:
             lang = st.session_state.pipeline_result.get("language_scan", {})
             if lang.get("passed"):
                 st.markdown(
@@ -422,372 +344,516 @@ def render_sidebar(api_key_from_env: str):
     return api_key, selected_org
 
 
-def main():
-    initialize()
+def render_upload_tab():
+    """Tab 1: Upload RFP."""
+    st.header("Upload RFP Document")
+    st.markdown(
+        '<p style="color: #7A8289;">Upload a Request for Proposals. '
+        'The system will parse it and generate targeted intake questions.</p>',
+        unsafe_allow_html=True,
+    )
 
-    # Inject brand CSS
-    st.markdown(BRAND_CSS, unsafe_allow_html=True)
+    uploaded_file = st.file_uploader(
+        "Upload RFP (PDF or DOCX)",
+        type=["pdf", "docx"],
+        help="Supports federal NOFOs, solicitations, and RFP documents",
+    )
 
-    # Get API key from env
-    api_key_from_env = os.getenv("ANTHROPIC_API_KEY", "")
+    col1, col2 = st.columns(2)
+    with col1:
+        target_state = st.text_input(
+            "Target State",
+            placeholder="e.g., Alabama, Tennessee",
+            help="State for VPI data integration",
+        )
+    with col2:
+        vpi_file = st.file_uploader(
+            "VPI Data (optional)",
+            type=["json", "csv"],
+            help="Engage Together VPI JSON for county-level data",
+        )
 
-    # Render sidebar
-    api_key, selected_org = render_sidebar(api_key_from_env)
+    if uploaded_file:
+        with st.spinner("Extracting document..."):
+            suffix = Path(uploaded_file.name).suffix
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                tmp.write(uploaded_file.getvalue())
+                tmp_path = Path(tmp.name)
 
-    # --- Main Content ---
-    tab_upload, tab_generate, tab_review, tab_export = st.tabs([
-        "Upload RFP",
-        "Generate Draft",
-        "Review & Edit",
-        "Export",
-    ])
+            try:
+                extracted = extract_document(tmp_path)
+                st.session_state.extracted_doc = extracted
 
-    # === TAB 1: Upload RFP ===
-    with tab_upload:
-        st.header("Upload RFP Document")
+                col_a, col_b, col_c = st.columns(3)
+                col_a.metric("Pages", extracted.page_count)
+                col_b.metric("Words", f"{extracted.word_count:,}")
+                col_c.metric("Tables", len(extracted.tables))
+
+                with st.expander("Document Preview", expanded=False):
+                    st.text(extracted.full_text[:3000] + "\n\n[... truncated ...]")
+            finally:
+                tmp_path.unlink(missing_ok=True)
+
+    return uploaded_file, target_state, vpi_file
+
+
+def render_intake_tab(api_key: str, selected_org: dict, uploaded_file, target_state: str, vpi_file):
+    """Tab 2: Analyze RFP and present intake questions."""
+    st.header("Intake Questions")
+
+    if not st.session_state.extracted_doc:
+        st.info("Upload an RFP document in the first tab.")
+        return
+
+    if not api_key:
+        st.warning("Enter your Anthropic API key in the sidebar.")
+        return
+
+    extracted = st.session_state.extracted_doc
+
+    # VPI data
+    vpi_data = None
+    if vpi_file:
+        try:
+            if vpi_file.name.endswith(".json"):
+                vpi_data = json.loads(vpi_file.getvalue())
+        except (json.JSONDecodeError, AttributeError):
+            pass
+
+    # Step 1: Analyze RFP (runs steps 1-2 + question generation)
+    if not st.session_state.analysis_result:
         st.markdown(
-            '<p style="color: #7A8289;">Upload a Request for Proposals from grants.gov or SAM.gov. '
-            'The system will extract text, tables, and structure for analysis.</p>',
+            '<p style="color: #7A8289;">Click below to analyze the RFP. '
+            'This runs AI parsing and compliance extraction (~$0.35, ~5 min), '
+            'then generates targeted questions for your team.</p>',
             unsafe_allow_html=True,
         )
 
-        uploaded_file = st.file_uploader(
-            "Upload RFP (PDF or DOCX)",
-            type=["pdf", "docx"],
-            help="Supports federal NOFOs, solicitations, and RFP documents",
+        if st.button("Analyze RFP & Generate Questions", type="primary", use_container_width=True):
+            progress_bar = st.progress(0)
+            status = st.empty()
+
+            def on_step(step_name: str, output: str):
+                label = STEP_LABELS.get(step_name, step_name)
+                if step_name == "rfp_ingestion":
+                    progress_bar.progress(0.33)
+                    status.write(f"Completed: {label}")
+                elif step_name == "compliance_extraction":
+                    progress_bar.progress(0.66)
+                    status.write(f"Completed: {label}")
+                elif step_name == "intake_questionnaire":
+                    progress_bar.progress(1.0)
+                    status.write(f"Completed: {label}")
+
+            pipeline = GrantPipeline(
+                api_key=api_key,
+                config_dir=CONFIG_DIR,
+                output_dir=OUTPUT_DIR,
+            )
+            st.session_state.pipeline = pipeline
+
+            result = pipeline.analyze(
+                rfp_text=extracted.full_text,
+                org_profile=selected_org or {"name": "Altus Solutions"},
+                file_name=uploaded_file.name if uploaded_file else "rfp_document",
+                page_count=extracted.page_count,
+                word_count=extracted.word_count,
+                tables_markdown=format_tables_as_markdown(extracted.tables),
+                vpi_data=vpi_data,
+                target_state=target_state,
+                on_step_complete=on_step,
+            )
+
+            st.session_state.analysis_result = result
+            cost = result["cost_summary"]["total_cost_usd"]
+            st.success(f"Analysis complete. {len(result['questions'])} questions generated. Cost: ${cost:.2f}")
+            st.rerun()
+
+    # Step 2: Display questions for user to answer
+    if st.session_state.analysis_result:
+        result = st.session_state.analysis_result
+        questions = result.get("questions", [])
+
+        if not questions:
+            st.warning("No questions were generated. You can proceed directly to generation.")
+            return
+
+        # Show RFP summary
+        with st.expander("RFP Summary (from analysis)", expanded=False):
+            st.markdown(result["step_outputs"].get("rfp_ingestion", "")[:3000])
+
+        with st.expander("Compliance Checklist (from analysis)", expanded=False):
+            st.markdown(result["step_outputs"].get("compliance_extraction", "")[:3000])
+
+        st.divider()
+
+        # Group questions by category
+        categories = {}
+        for q in questions:
+            cat = q["category"]
+            if cat not in categories:
+                categories[cat] = []
+            categories[cat].append(q)
+
+        critical_count = sum(1 for q in questions if q["priority"] == "critical")
+        rec_count = len(questions) - critical_count
+        st.markdown(
+            f"**{len(questions)} questions** generated from your RFP: "
+            f"**{critical_count} critical**, {rec_count} recommended. "
+            f"Answer what you can -- the more you provide, the better the draft.",
         )
 
-        col1, col2 = st.columns(2)
+        st.write("")
 
-        with col1:
-            target_state = st.text_input(
-                "Target State",
-                placeholder="e.g., Alabama, Tennessee",
-                help="State for VPI data integration in the needs statement",
+        # Render questions by category
+        for category, cat_questions in categories.items():
+            st.markdown(
+                f'<div class="category-header">{category}</div>',
+                unsafe_allow_html=True,
             )
 
-        with col2:
-            vpi_file = st.file_uploader(
-                "VPI Data (optional)",
-                type=["json", "csv"],
-                help="Upload Engage Together VPI JSON for county-level vulnerability data",
-            )
+            for q in cat_questions:
+                qid = q["id"]
+                priority_tag = "CRITICAL" if q["priority"] == "critical" else "Recommended"
+                priority_color = "#D94F4F" if q["priority"] == "critical" else "#E8A317"
 
-        if uploaded_file:
-            with st.spinner("Extracting document..."):
-                suffix = Path(uploaded_file.name).suffix
-                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-                    tmp.write(uploaded_file.getvalue())
-                    tmp_path = Path(tmp.name)
+                st.markdown(
+                    f'<span style="color: {priority_color}; font-weight: 600; font-size: 0.75rem;">'
+                    f'{priority_tag}</span>',
+                    unsafe_allow_html=True,
+                )
 
-                try:
-                    extracted = extract_document(tmp_path)
-                    st.session_state.extracted_doc = extracted
+                # Get existing answer or default
+                existing = st.session_state.intake_answers.get(qid, q.get("default", ""))
 
-                    # Summary metrics
-                    col_a, col_b, col_c = st.columns(3)
-                    col_a.metric("Pages", extracted.page_count)
-                    col_b.metric("Words", f"{extracted.word_count:,}")
-                    col_c.metric("Tables", len(extracted.tables))
-
-                    with st.expander("Document Preview", expanded=False):
-                        st.text(extracted.full_text[:3000] + "\n\n[... truncated ...]")
-
-                    if extracted.tables:
-                        with st.expander(f"Extracted Tables ({len(extracted.tables)})", expanded=False):
-                            st.markdown(format_tables_as_markdown(extracted.tables))
-
-                finally:
-                    tmp_path.unlink(missing_ok=True)
-
-    # === TAB 2: Generate Draft ===
-    with tab_generate:
-        st.header("Generate Grant Application")
-
-        if not st.session_state.extracted_doc:
-            st.info("Upload an RFP document in the first tab to get started.")
-            return
-
-        if not api_key:
-            st.warning("Enter your Anthropic API key in the sidebar to enable generation.")
-            return
-
-        extracted = st.session_state.extracted_doc
-
-        # VPI data handling
-        vpi_data = None
-        if vpi_file:
-            try:
-                if vpi_file.name.endswith(".json"):
-                    vpi_data = json.loads(vpi_file.getvalue())
+                if q["input_type"] == "textarea":
+                    answer = st.text_area(
+                        q["question"],
+                        value=existing,
+                        key=f"intake_{qid}",
+                        help=q.get("why", ""),
+                        height=120,
+                    )
+                elif q["input_type"] == "number":
+                    answer = st.text_input(
+                        q["question"],
+                        value=str(existing) if existing else "",
+                        key=f"intake_{qid}",
+                        help=q.get("why", ""),
+                    )
+                elif q["input_type"] == "select" and q.get("options"):
+                    options = [""] + q["options"]
+                    idx = options.index(existing) if existing in options else 0
+                    answer = st.selectbox(
+                        q["question"],
+                        options=options,
+                        index=idx,
+                        key=f"intake_{qid}",
+                        help=q.get("why", ""),
+                    )
                 else:
-                    st.warning("CSV VPI data requires conversion to JSON. Use JSON format.")
-            except json.JSONDecodeError:
-                st.error("Invalid JSON in VPI file.")
+                    answer = st.text_input(
+                        q["question"],
+                        value=existing,
+                        key=f"intake_{qid}",
+                        help=q.get("why", ""),
+                    )
 
-        # Pipeline configuration
-        with st.expander("Pipeline Settings", expanded=False):
-            max_cost = st.slider("Max Cost per Run ($)", 1.0, 25.0, 10.0, 0.5)
-            use_opus = st.checkbox(
-                "Use Opus for Narrative Assembly",
-                value=False,
-                help="Higher quality narrative but approximately 5x more expensive for that step",
-            )
+                st.session_state.intake_answers[qid] = answer
 
-        # Generate button
-        if st.button("Generate Grant Application", type="primary", use_container_width=True):
-            progress_bar = st.progress(0)
-            status_container = st.container()
-            step_statuses = {}
-            st.session_state.completed_steps = []
+        # Summary of answered questions
+        st.divider()
+        answered = sum(1 for v in st.session_state.intake_answers.values() if v and str(v).strip())
+        st.markdown(
+            f"**{answered} of {len(questions)} questions answered.** "
+            f"Proceed to Generate Draft when ready."
+        )
 
-            def on_step_complete(step_name: str, output: str):
-                step_idx = STEP_NAMES.index(step_name)
-                progress = (step_idx + 1) / len(STEP_NAMES)
+
+def render_generate_tab(api_key: str, selected_org: dict, target_state: str, vpi_file):
+    """Tab 3: Generate the draft using intake answers."""
+    st.header("Generate Grant Application")
+
+    if not st.session_state.analysis_result:
+        st.info("Analyze the RFP and answer intake questions first.")
+        return
+
+    if not api_key:
+        st.warning("Enter your Anthropic API key in the sidebar.")
+        return
+
+    # Show intake answer summary
+    answers = st.session_state.intake_answers
+    answered = sum(1 for v in answers.values() if v and str(v).strip())
+    total_q = len(st.session_state.analysis_result.get("questions", []))
+
+    if answered == 0:
+        st.warning(
+            "You haven't answered any intake questions. The draft will use assumptions "
+            "and may contain placeholders. Go back to the Intake tab to improve results."
+        )
+    else:
+        st.success(f"{answered} of {total_q} intake questions answered.")
+
+    with st.expander(f"Your Answers ({answered} provided)", expanded=False):
+        for qid, answer in answers.items():
+            if answer and str(answer).strip():
+                label = qid.replace("_", " ").title()
+                st.write(f"**{label}:** {answer}")
+
+    # Pipeline settings
+    with st.expander("Pipeline Settings", expanded=False):
+        max_cost = st.slider("Max Cost per Run ($)", 1.0, 25.0, 10.0, 0.5)
+        use_opus = st.checkbox(
+            "Use Opus for Narrative Assembly",
+            value=False,
+            help="Higher quality but ~5x more expensive for that step",
+        )
+
+    # Generate button
+    if st.button("Generate Grant Application", type="primary", use_container_width=True):
+        progress_bar = st.progress(0)
+        status_container = st.container()
+        step_statuses = {}
+
+        def on_step(step_name: str, output: str):
+            gen_steps = GENERATE_STEPS
+            if step_name in gen_steps:
+                idx = gen_steps.index(step_name)
+                progress = (idx + 1) / len(gen_steps)
                 progress_bar.progress(progress)
                 step_statuses[step_name] = len(output.split())
-                st.session_state.completed_steps.append(step_name)
-                st.session_state.current_step = (
-                    STEP_NAMES[step_idx + 1] if step_idx + 1 < len(STEP_NAMES) else None
-                )
                 with status_container:
-                    for sn in STEP_NAMES:
+                    for sn in gen_steps:
                         label = STEP_LABELS.get(sn, sn)
-                        num = STEP_ICONS.get(sn, "")
                         if sn in step_statuses:
                             st.markdown(
-                                f'<div class="step-complete">'
-                                f'{num}. {label} &mdash; {step_statuses[sn]:,} words</div>',
+                                f'<div class="step-complete">{label} -- {step_statuses[sn]:,} words</div>',
                                 unsafe_allow_html=True,
                             )
 
-            # Set first step as active
-            st.session_state.current_step = STEP_NAMES[0]
-
-            # Build settings overrides
-            settings = None
-            if use_opus or max_cost != 10.0:
-                import yaml
-                with open(CONFIG_DIR / "settings.yaml") as f:
-                    settings = yaml.safe_load(f)
-                if use_opus:
-                    settings["step_overrides"] = settings.get("step_overrides", {})
-                    settings["step_overrides"]["narrative_assembly"] = {
-                        "model": "claude-opus-4-20250514"
-                    }
-                settings["max_total_cost_usd"] = max_cost
-
-            try:
-                pipeline = GrantPipeline(
-                    api_key=api_key,
-                    config_dir=CONFIG_DIR,
-                    output_dir=OUTPUT_DIR,
-                    settings=settings,
-                )
-
-                result = pipeline.run(
-                    rfp_text=extracted.full_text,
-                    org_profile=selected_org or {"name": "Altus Solutions"},
-                    file_name=uploaded_file.name if uploaded_file else "rfp_document",
-                    page_count=extracted.page_count,
-                    word_count=extracted.word_count,
-                    tables_markdown=format_tables_as_markdown(extracted.tables),
-                    vpi_data=vpi_data,
-                    target_state=target_state,
-                    on_step_complete=on_step_complete,
-                )
-
-                st.session_state.pipeline_result = result
-                st.session_state.current_step = None
-                progress_bar.progress(1.0)
-
-                total_cost = result["cost_summary"]["total_cost_usd"]
-                st.success(f"Grant application generated. Total cost: ${total_cost:.2f}")
-
-                # Language scan results
-                lang = result.get("language_scan", {})
-                if lang.get("passed"):
-                    st.markdown(
-                        f'<div class="guardrail-pass">'
-                        f'Language Guardrails: PASSED &mdash; {lang.get("summary", "")}</div>',
-                        unsafe_allow_html=True,
-                    )
-                else:
-                    st.markdown(
-                        f'<div class="guardrail-fail">'
-                        f'Language Guardrails: REVIEW &mdash; {lang.get("summary", "")}</div>',
-                        unsafe_allow_html=True,
-                    )
-
-            except Exception as e:
-                st.error(f"Pipeline error: {e}")
-                raise
-
-    # === TAB 3: Review & Edit ===
-    with tab_review:
-        st.header("Review & Edit Sections")
-
-        if not st.session_state.pipeline_result:
-            st.info("Generate a draft in the previous tab to review it here.")
+        pipeline = st.session_state.pipeline
+        if pipeline is None:
+            st.error("Pipeline not initialized. Re-analyze the RFP.")
             return
 
-        result = st.session_state.pipeline_result
-        step_outputs = result.get("step_outputs", {})
+        # Apply settings overrides
+        if use_opus:
+            import yaml
+            pipeline.settings["step_overrides"] = pipeline.settings.get("step_overrides", {})
+            pipeline.settings["step_overrides"]["narrative_assembly"] = {
+                "model": "claude-opus-4-20250514"
+            }
+        pipeline.settings["max_total_cost_usd"] = max_cost
 
-        # QA Scorecard
-        if result.get("scorecard"):
-            with st.expander("Quality Scorecard", expanded=True):
-                st.markdown(result["scorecard"])
+        try:
+            context = st.session_state.analysis_result["context"]
 
-        # Section-by-section review
-        review_steps = [
-            "needs_statement",
-            "program_design",
-            "narrative_assembly",
-        ]
-
-        for step_name in review_steps:
-            if step_name not in step_outputs:
-                continue
-
-            label = STEP_LABELS.get(step_name, step_name)
-            content = step_outputs[step_name]
-            word_count = len(content.split())
-
-            with st.expander(f"{label} ({word_count:,} words)", expanded=False):
-                edited = st.text_area(
-                    f"Edit {label}",
-                    value=st.session_state.edited_sections.get(step_name, content),
-                    height=400,
-                    key=f"edit_{step_name}",
-                    label_visibility="collapsed",
-                )
-                st.session_state.edited_sections[step_name] = edited
-
-                # Language scan for this section
-                scan = scan_text(edited)
-                if scan.passed and scan.context_dependent_count == 0:
-                    st.markdown(
-                        '<div class="guardrail-pass">Language check: PASSED</div>',
-                        unsafe_allow_html=True,
-                    )
-                elif not scan.passed:
-                    st.markdown(
-                        '<div class="guardrail-fail">Language check: FAILED</div>',
-                        unsafe_allow_html=True,
-                    )
-                    st.code(scan.details(), language=None)
-                else:
-                    st.warning(scan.summary())
-
-        # Compliance check view
-        compliance_text = step_outputs.get("compliance_extraction", "")
-        if compliance_text:
-            with st.expander("Compliance Checklist", expanded=False):
-                items = parse_compliance_checklist(compliance_text)
-                final_text = st.session_state.edited_sections.get(
-                    "narrative_assembly",
-                    step_outputs.get("narrative_assembly", ""),
-                )
-                compliance_result = check_draft_compliance(final_text, items)
-                st.metric("Compliance Score", compliance_result.score_pct)
-
-                for item in compliance_result.items:
-                    icon = "+" if item["is_met"] else "-"
-                    st.write(
-                        f"{icon} {item['requirement_text'][:100]}"
-                    )
-
-    # === TAB 4: Export ===
-    with tab_export:
-        st.header("Export Grant Application")
-
-        if not st.session_state.pipeline_result:
-            st.info("Generate a draft first, then export it here.")
-            return
-
-        result = st.session_state.pipeline_result
-
-        # Use edited version if available
-        final_text = st.session_state.edited_sections.get(
-            "narrative_assembly",
-            result.get("final_report", ""),
-        )
-
-        # Final language check before export
-        scan = scan_text(final_text)
-        if not scan.passed:
-            st.markdown(
-                f'<div class="guardrail-fail">'
-                f'Export blocked: {scan.prohibited_count} prohibited term(s) found. '
-                f'Fix them in the Review tab first.</div>',
-                unsafe_allow_html=True,
+            result = pipeline.generate(
+                context=context,
+                intake_answers=answers,
+                on_step_complete=on_step,
             )
-            st.code(scan.details(), language=None)
-            return
 
+            st.session_state.pipeline_result = result
+            progress_bar.progress(1.0)
+
+            total_cost = result["cost_summary"]["total_cost_usd"]
+            st.success(f"Grant application generated. Total cost: ${total_cost:.2f}")
+
+            lang = result.get("language_scan", {})
+            if lang.get("passed"):
+                st.markdown(
+                    '<div class="guardrail-pass">Language Guardrails: PASSED</div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(
+                    f'<div class="guardrail-fail">Language Guardrails: REVIEW -- {lang.get("summary", "")}</div>',
+                    unsafe_allow_html=True,
+                )
+
+        except Exception as e:
+            st.error(f"Pipeline error: {e}")
+            raise
+
+
+def render_review_tab():
+    """Tab 4: Review and edit sections."""
+    st.header("Review & Edit Sections")
+
+    if not st.session_state.pipeline_result:
+        st.info("Generate a draft first.")
+        return
+
+    result = st.session_state.pipeline_result
+    step_outputs = result.get("step_outputs", {})
+
+    if result.get("scorecard"):
+        with st.expander("Quality Scorecard", expanded=True):
+            st.markdown(result["scorecard"])
+
+    for step_name in ["needs_statement", "program_design", "narrative_assembly"]:
+        if step_name not in step_outputs:
+            continue
+
+        label = STEP_LABELS.get(step_name, step_name)
+        content = step_outputs[step_name]
+        word_count = len(content.split())
+
+        with st.expander(f"{label} ({word_count:,} words)", expanded=False):
+            edited = st.text_area(
+                f"Edit {label}",
+                value=st.session_state.edited_sections.get(step_name, content),
+                height=400,
+                key=f"edit_{step_name}",
+                label_visibility="collapsed",
+            )
+            st.session_state.edited_sections[step_name] = edited
+
+            scan = scan_text(edited)
+            if scan.passed and scan.context_dependent_count == 0:
+                st.markdown(
+                    '<div class="guardrail-pass">Language check: PASSED</div>',
+                    unsafe_allow_html=True,
+                )
+            elif not scan.passed:
+                st.markdown(
+                    '<div class="guardrail-fail">Language check: FAILED</div>',
+                    unsafe_allow_html=True,
+                )
+                st.code(scan.details(), language=None)
+            else:
+                st.warning(scan.summary())
+
+    compliance_text = step_outputs.get("compliance_extraction", "")
+    if compliance_text:
+        with st.expander("Compliance Checklist", expanded=False):
+            items = parse_compliance_checklist(compliance_text)
+            final_text = st.session_state.edited_sections.get(
+                "narrative_assembly",
+                step_outputs.get("narrative_assembly", ""),
+            )
+            compliance_result = check_draft_compliance(final_text, items)
+            st.metric("Compliance Score", compliance_result.score_pct)
+
+            for item in compliance_result.items:
+                icon = "+" if item["is_met"] else "-"
+                st.write(f"{icon} {item['requirement_text'][:100]}")
+
+
+def render_export_tab(selected_org: dict):
+    """Tab 5: Export the grant application."""
+    st.header("Export Grant Application")
+
+    if not st.session_state.pipeline_result:
+        st.info("Generate a draft first.")
+        return
+
+    result = st.session_state.pipeline_result
+
+    final_text = st.session_state.edited_sections.get(
+        "narrative_assembly",
+        result.get("final_report", ""),
+    )
+
+    scan = scan_text(final_text)
+    if not scan.passed:
         st.markdown(
-            '<div class="guardrail-pass">Language guardrails: PASSED &mdash; ready for export</div>',
+            f'<div class="guardrail-fail">'
+            f'Export blocked: {scan.prohibited_count} prohibited term(s). '
+            f'Fix in Review tab.</div>',
             unsafe_allow_html=True,
         )
-        st.write("")
+        st.code(scan.details(), language=None)
+        return
 
-        col1, col2 = st.columns(2)
+    st.markdown(
+        '<div class="guardrail-pass">Language guardrails: PASSED -- ready for export</div>',
+        unsafe_allow_html=True,
+    )
+    st.write("")
 
-        with col1:
-            st.download_button(
-                "Download Markdown",
-                data=final_text,
-                file_name=f"grant_application_{datetime.now().strftime('%Y%m%d')}.md",
-                mime="text/markdown",
-                use_container_width=True,
-            )
+    col1, col2 = st.columns(2)
 
-        with col2:
-            if st.button("Generate DOCX", use_container_width=True):
-                with st.spinner("Creating Word document..."):
-                    rfp_summary = result.get("step_outputs", {}).get("rfp_ingestion", "")
-                    title = "Grant Application"
-                    funder = ""
+    with col1:
+        st.download_button(
+            "Download Markdown",
+            data=final_text,
+            file_name=f"grant_application_{datetime.now().strftime('%Y%m%d')}.md",
+            mime="text/markdown",
+            use_container_width=True,
+        )
 
-                    docx_path = OUTPUT_DIR / f"Grant_Application_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
-                    markdown_to_docx(
-                        markdown_text=final_text,
-                        output_path=docx_path,
-                        title=title,
-                        funder=funder,
-                        applicant=selected_org.get("name", "Altus Solutions") if selected_org else "Altus Solutions",
+    with col2:
+        if st.button("Generate DOCX", use_container_width=True):
+            with st.spinner("Creating Word document..."):
+                docx_path = OUTPUT_DIR / f"Grant_Application_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
+                markdown_to_docx(
+                    markdown_text=final_text,
+                    output_path=docx_path,
+                    title="Grant Application",
+                    funder="",
+                    applicant=selected_org.get("name", "Altus Solutions") if selected_org else "Altus Solutions",
+                )
+
+                with open(docx_path, "rb") as f:
+                    st.download_button(
+                        "Download DOCX",
+                        data=f.read(),
+                        file_name=docx_path.name,
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        use_container_width=True,
                     )
+                st.success(f"DOCX created: {docx_path.name}")
 
-                    with open(docx_path, "rb") as f:
-                        st.download_button(
-                            "Download DOCX",
-                            data=f.read(),
-                            file_name=docx_path.name,
-                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                            use_container_width=True,
-                        )
-                    st.success(f"DOCX created: {docx_path.name}")
+    # Cost summary
+    st.divider()
+    st.subheader("Run Summary")
+    cost = result.get("cost_summary", {})
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Total Cost", f"${cost.get('total_cost_usd', 0):.2f}")
+    col2.metric("Input Tokens", f"{cost.get('total_input_tokens', 0):,}")
+    col3.metric("Output Tokens", f"{cost.get('total_output_tokens', 0):,}")
 
-        # Cost summary
-        st.divider()
-        st.subheader("Run Summary")
-        cost = result.get("cost_summary", {})
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Total Cost", f"${cost.get('total_cost_usd', 0):.2f}")
-        col2.metric("Input Tokens", f"{cost.get('total_input_tokens', 0):,}")
-        col3.metric("Output Tokens", f"{cost.get('total_output_tokens', 0):,}")
+    if cost.get("by_step"):
+        with st.expander("Cost by Step"):
+            for step_name, step_cost in cost["by_step"].items():
+                label = STEP_LABELS.get(step_name, step_name)
+                st.write(
+                    f"**{label}**: ${step_cost['cost_usd']:.4f} "
+                    f"({step_cost['input_tokens']:,} + {step_cost['output_tokens']:,} tokens)"
+                )
 
-        if cost.get("by_step"):
-            with st.expander("Cost by Step"):
-                for step_name, step_cost in cost["by_step"].items():
-                    label = STEP_LABELS.get(step_name, step_name)
-                    num = STEP_ICONS.get(step_name, "")
-                    st.write(
-                        f"**{num}. {label}**: ${step_cost['cost_usd']:.4f} "
-                        f"({step_cost['input_tokens']:,} + {step_cost['output_tokens']:,} tokens, "
-                        f"{step_cost.get('duration_seconds', 0):.0f}s)"
-                    )
+
+def main():
+    initialize()
+    st.markdown(BRAND_CSS, unsafe_allow_html=True)
+
+    api_key, selected_org = render_sidebar()
+
+    tab_upload, tab_intake, tab_generate, tab_review, tab_export = st.tabs([
+        "1. Upload RFP",
+        "2. Intake Questions",
+        "3. Generate Draft",
+        "4. Review & Edit",
+        "5. Export",
+    ])
+
+    with tab_upload:
+        uploaded_file, target_state, vpi_file = render_upload_tab()
+
+    with tab_intake:
+        render_intake_tab(api_key, selected_org, uploaded_file, target_state, vpi_file)
+
+    with tab_generate:
+        render_generate_tab(api_key, selected_org, target_state, vpi_file)
+
+    with tab_review:
+        render_review_tab()
+
+    with tab_export:
+        render_export_tab(selected_org)
 
 
 if __name__ == "__main__":

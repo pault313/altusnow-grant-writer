@@ -22,6 +22,7 @@ class ProgramDesignStep(BaseStep):
             section_requirements=_extract_section_reqs(
                 step_outputs.get("compliance_extraction", ""),
             ),
+            intake_answers=context.get("intake_answers_text", "No intake answers provided."),
         )
 
 

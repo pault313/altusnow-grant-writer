@@ -38,4 +38,5 @@ class OrgContextAssemblyStep(BaseStep):
             product_catalog=product_text,
             rfp_summary=context.get("step_outputs", {}).get("rfp_ingestion", ""),
             compliance_checklist=context.get("step_outputs", {}).get("compliance_extraction", ""),
+            intake_answers=context.get("intake_answers_text", "No intake answers provided."),
         )

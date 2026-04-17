@@ -64,3 +64,11 @@ user_prompt_template: |
   These are the specific requirements the application must meet:
 
   {compliance_checklist}
+
+  ## Intake Questionnaire Answers
+
+  The applicant provided the following information during the intake process.
+  Use these answers to fill in organizational details, partner names, staff
+  qualifications, and other specifics. Prefer these answers over assumptions.
+
+  {intake_answers}

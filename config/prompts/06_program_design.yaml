@@ -102,6 +102,16 @@ user_prompt_template: |
 
   ---
 
+  ## Applicant-Provided Context
+
+  The applicant provided the following information during intake:
+
+  {intake_answers}
+
+  ---
+
   Write the Program Design, Goals/Objectives, and Budget Narrative sections now.
   Incorporate Altus products where they genuinely address RFP requirements.
   Be specific with budget line items -- no vague cost estimates.
+  Use the applicant's intake answers for staff names, partner details, budget
+  figures, and program specifics instead of placeholders.
