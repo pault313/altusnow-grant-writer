@@ -8,5 +8,5 @@ python-dotenv>=1.0.0
 rich>=13.7.0
 click>=8.1.0
 streamlit>=1.30.0
-pymupdf==1.25.3
+PyMuPDF
 pdfplumber>=0.11.0
