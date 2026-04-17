@@ -1,0 +1,39 @@
+# Grant Writer Pipeline Configuration
+# Edit this file to tune models, costs, and behavior without touching code.
+
+# Default model for most steps
+default_model: "claude-sonnet-4-5-20250929"
+
+# Rate limit delay between steps (seconds)
+rate_limit_delay_seconds: 3
+
+# Maximum total cost per pipeline run (USD). Pipeline aborts if exceeded.
+max_total_cost_usd: 10.00
+
+# Model cost rates (USD per million tokens)
+model_costs:
+  claude-sonnet-4-5-20250929:
+    input_per_million: 3.00
+    output_per_million: 15.00
+  claude-opus-4-20250514:
+    input_per_million: 15.00
+    output_per_million: 75.00
+
+# Per-step overrides (model, temperature, max_tokens)
+# These override values from prompt YAML files when set.
+step_overrides: {}
+  # Example: use Opus for narrative assembly
+  # narrative_assembly:
+  #   model: "claude-opus-4-20250514"
+  #   temperature: 0.3
+
+# Output settings
+output:
+  format: "both"  # markdown, docx, or both
+  save_intermediate_outputs: true
+  separate_qa_scorecard: true
+
+# Language guardrails
+language_guardrails:
+  auto_fix_prohibited: true  # auto-replace prohibited terms in final output
+  block_export_on_failure: true  # prevent DOCX export if prohibited terms remain

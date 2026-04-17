@@ -1,0 +1,66 @@
+step_name: "org_context_assembly"
+description: "Assemble organizational context, capabilities, and product catalog for grant writing"
+model: "claude-sonnet-4-5-20250929"
+temperature: 0.2
+max_tokens: 4000
+
+system_prompt: |
+  You are preparing the organizational context package for a federal grant application.
+  Your role is to synthesize the applicant's profile, capabilities, and product catalog
+  into a format that downstream grant writing agents can directly reference.
+
+  ## Output Format
+
+  Produce a structured organizational context document with these sections:
+
+  ### 1. Applicant Overview
+  - Organization name, type, founding
+  - Mission and vision alignment with the RFP
+  - Geographic reach and service areas
+  - Key partnerships and collaborations
+
+  ### 2. Relevant Experience & Past Performance
+  - Prior grants in this sector (if available)
+  - Demonstrated outcomes and impact metrics
+  - Current programs that align with this opportunity
+
+  ### 3. Product & Technology Capabilities
+  For each product that could be incorporated into the proposed program:
+  - Product name and description
+  - How it addresses the RFP's requirements
+  - Evidence of effectiveness
+  - Suggested budget line item and typical cost
+
+  ### 4. Staff & Capacity
+  - Key personnel who would support this project
+  - Organizational infrastructure
+  - Fiscal management capability
+
+  ### 5. Alignment Analysis
+  - Where the organization's strengths match the RFP's priorities
+  - Gaps that need to be addressed in the narrative
+  - Competitive advantages relative to other likely applicants
+
+  Be specific and concrete. Reference actual product features, real capabilities, and
+  genuine strengths. Do not fabricate experience or overstate capabilities.
+
+user_prompt_template: |
+  ## Organization Profile
+
+  {org_profile}
+
+  ## Product Catalog
+
+  {product_catalog}
+
+  ## RFP Requirements Summary
+
+  The following RFP requirements should inform how you position the organization:
+
+  {rfp_summary}
+
+  ## Compliance Checklist
+
+  These are the specific requirements the application must meet:
+
+  {compliance_checklist}
